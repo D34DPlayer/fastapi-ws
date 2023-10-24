@@ -5,8 +5,13 @@ name = "pypi"
 
 [packages]
 fastapi = "*"
+pydantic = "*"
 
 [dev-packages]
+ipython = "*"
+black = "*"
+uvicorn = "*"
+websockets = "*"
 
 [requires]
 python_version = "3.9"
