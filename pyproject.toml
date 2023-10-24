@@ -1,0 +1,5 @@
+[project]
+name = "fastapi-ws"
+version = "0.0.0"
+description = "FastAPI extension to automatically document your PubSub asynchronous API."
+readme = "README.md"
