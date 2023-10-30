@@ -1,4 +1,5 @@
 import json
+import logging
 import urllib.parse
 from typing import Optional
 
@@ -10,6 +11,8 @@ from .asyncapi.templates import asyncapi_html
 from .asyncapi.types import AsyncApi
 from .manager import WebsocketManager
 from .ws_payloads import Payload, create_error
+
+logger = logging.getLogger("fastapi_ws")
 
 
 class WebsocketEndpoint(WebsocketManager):
@@ -28,7 +31,7 @@ class WebsocketEndpoint(WebsocketManager):
 
         self.asyncapi_schema = None
 
-    def generate_asyncapi(self):
+    def __generate_asyncapi(self):
         schema = {
             "asyncapi": "2.6.0",
             "info": {
@@ -52,13 +55,13 @@ class WebsocketEndpoint(WebsocketManager):
     @property
     def asyncapi(self):
         if not self.asyncapi_schema:
-            self.generate_asyncapi()
+            self.__generate_asyncapi()
         return self.asyncapi_schema
 
     async def websocket_endpoint(self, ws: WebSocket):
-        await self.connect(ws)
-        try:
-            while True:
+        await self.__connect(ws)
+        while True:
+            try:
                 data = await ws.receive_text()
                 try:
                     parsed_data = json.loads(data)
@@ -73,10 +76,10 @@ class WebsocketEndpoint(WebsocketManager):
                     continue
 
                 if payload.type == "subscribe":
-                    self.subscribe(payload.channel, ws)
+                    self.__subscribe(payload.channel, ws)
                 elif payload.type == "unsubscribe":
                     try:
-                        self.unsubscribe(payload.channel, ws)
+                        self.__unsubscribe(payload.channel, ws)
                     except KeyError:
                         error_payload = create_error(
                             "Not subscribed to " + payload.channel
@@ -88,8 +91,13 @@ class WebsocketEndpoint(WebsocketManager):
                     ).model_dump_json()
                     await ws.send_text(error_payload)
 
-        except WebSocketDisconnect:
-            await self.disconnect(ws)
+            except WebSocketDisconnect:
+                await self.__disconnect(ws)
+                break
+            except Exception as e:
+                await self.__emit("error", e)
+                error_payload = create_error("Internal server error").model_dump_json()
+                await ws.send_text(error_payload)
 
     def asyncapi_endpoint(self, _: Request):
         return JSONResponse(self.asyncapi)

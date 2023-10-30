@@ -1,9 +1,10 @@
 from dataclasses import dataclass, field
-from inspect import iscoroutinefunction
 from time import time
-from typing import Set, List, Callable, Any
+from typing import Set, List
 
 from fastapi import WebSocket
+
+from .event_listener import EventListener
 
 
 @dataclass
@@ -13,55 +14,6 @@ class Connection:
     created_at: float = field(default_factory=time)
 
 
-class EventListener:
-    callbacks: dict[str, list[Callable]]
-
-    def __init__(self):
-        self.callbacks = {}
-
-    def on(self, event: str):
-        """
-        Decorator to register a callback for an event. Supports async.
-        :param event: Event name
-        :return: Decorator
-
-        Example:
-        ```
-        @ws.on("connect")
-        async def on_connect(payload):
-            print("Client connected")
-        ```
-        """
-        if event not in self.callbacks:
-            self.callbacks[event] = []
-
-        def decorator(func: Callable):
-            self.callbacks[event].append(func)
-            return func
-
-        return decorator
-
-    async def emit(self, event: str, payload: Any):
-        """
-        Emit an event to all listeners.
-        :param event: Event name
-        :param payload: Payload to send to listeners
-        :return: Number of listeners called
-
-        Example:
-        ```
-        await ws.emit("connect", {"message": "Client connected"})
-        ```
-        """
-        callbacks = self.callbacks.get(event, [])
-        for callback in callbacks:
-            if iscoroutinefunction(callback):
-                await callback(payload)
-            callback(payload)
-
-        return len(callbacks)
-
-
 class WebsocketManager(EventListener):
     connections: List[Connection]
 
@@ -69,23 +21,23 @@ class WebsocketManager(EventListener):
         super().__init__()
         self.connections = []
 
-    def index(self, ws: WebSocket) -> int:
+    def __index(self, ws: WebSocket) -> int:
         for i, con in enumerate(self.connections):
             if con.ws is ws:
                 return i
 
-    async def connect(self, ws: WebSocket):
+    async def __connect(self, ws: WebSocket):
         await ws.accept()
         con = Connection(ws=ws, subscriptions=set())
         self.connections.append(con)
-        await self.emit("connect", con)
+        await self.__emit("connect", con)
 
-    async def disconnect(self, ws: WebSocket):
-        index = self.index(ws)
+    async def __disconnect(self, ws: WebSocket):
+        index = self.__index(ws)
         con = self.connections.pop(index)
-        await self.emit("disconnect", con)
+        await self.__emit("disconnect", con)
 
-    async def broadcast(self, subscription: str, message: str) -> int:
+    async def __broadcast(self, subscription: str, message: str) -> int:
         count = 0
         for connection in self.connections:
             if subscription in connection.subscriptions:
@@ -93,10 +45,10 @@ class WebsocketManager(EventListener):
                 count += 1
         return count
 
-    def subscribe(self, subscription: str, ws: WebSocket):
-        index = self.index(ws)
+    def __subscribe(self, subscription: str, ws: WebSocket):
+        index = self.__index(ws)
         self.connections[index].subscriptions.add(subscription)
 
-    def unsubscribe(self, subscription: str, ws: WebSocket):
-        index = self.index(ws)
+    def __unsubscribe(self, subscription: str, ws: WebSocket):
+        index = self.__index(ws)
         self.connections[index].subscriptions.remove(subscription)
